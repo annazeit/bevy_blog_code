@@ -1,0 +1,9 @@
+[package]
+name = "bevy_blog_code"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.14" }
+rand = "0.8.5"
+almost = "0.2.0"
