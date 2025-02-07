@@ -66,7 +66,7 @@ fn draw_player(
                 new_position.y -= step; // Move down
             }
 
-            if !check_collisions(new_position, &player, &obstacle) {
+            if !check_collisions(new_position, &mut player, &obstacle) {
                 player.position = new_position; // Update if no collision
             }
         }    
@@ -75,14 +75,14 @@ fn draw_player(
 
 fn check_collisions(
     new_position: Vec2, 
-    player: &Player,
+    player: &mut Player,
     obstacle: &Obstacle,
 ) -> bool {
     let distance = new_position.distance(obstacle.position);
     let sum_radius = player.size_radius + obstacle.size_radius;
 
     if distance < sum_radius { // if distance smaller than sum of radii
-        println!("Collision detected!");
+        player.color = GREEN;
         return true;
     }
     else {

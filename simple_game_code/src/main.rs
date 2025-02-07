@@ -5,7 +5,7 @@ use bevy::color::palettes::basic::*;
 #[derive(Component)] // Marks the Player struct as a component that can be attached to entities in Bevy's Entity-Component-System.
 struct Player {
     position: Vec2,
-    directiom_angle: f32,
+    direction_angle: f32,
     speed: f32,
     color: Srgba,
 } 
@@ -29,7 +29,7 @@ fn setup(mut commands: Commands) {
 
     commands.spawn(Player { //Spawns a Player entity with these parameters.
         position: Vec2::new(0.0, 0.0),
-        directiom_angle: 0.0,
+        direction_angle: 0.0,
         speed: 3.0,
         color: RED,
     });
@@ -45,15 +45,15 @@ fn draw_player(
         gizmos.circle_2d(player.position, size_radius, player.color); // Draws a circle at the player's position.
     
         if keyboard_input.pressed(KeyCode::ArrowLeft) {
-            player.directiom_angle -= 0.1; // Rotates the player to the left.
+            player.direction_angle -= 0.1; // Rotates the player to the left.
         } 
         if keyboard_input.pressed(KeyCode::ArrowRight) {
-            player.directiom_angle += 0.1; // Rotates the player to the right.
+            player.direction_angle += 0.1; // Rotates the player to the right.
         }
 
         // Calculate the movement vector based on the player's direction and speed.
-        let x = f32::sin(player.directiom_angle);
-        let y = f32::cos(player.directiom_angle);
+        let x = f32::sin(player.direction_angle);
+        let y = f32::cos(player.direction_angle);
         let movement_vector = Vec2::new(x, y) * player.speed;
 
         if keyboard_input.pressed(KeyCode::ArrowUp) {
