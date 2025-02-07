@@ -17,15 +17,9 @@ struct Obstacle {
 fn main() {     
     App::new()     
         .add_plugins(DefaultPlugins) 
-
-        // Startup runs once at the beginning
-        .add_systems(Startup, setup) 
-
-        // Update runs every frame
-        .add_systems(Update, draw_player) 
-
-         // Runs the application
-        .run();
+        .add_systems(Startup, setup) // Startup runs once at the beginning
+        .add_systems(Update, draw_player)  // Update runs every frame
+        .run();// Runs the application
 }
 
 fn setup(mut commands: Commands) {
