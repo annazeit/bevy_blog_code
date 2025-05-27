@@ -1,0 +1,9 @@
+[package]
+name = "spinny_cube"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.15", features = ["bevy_audio"] }
+rand = "0.8.5"
+almost = "0.2.0"
