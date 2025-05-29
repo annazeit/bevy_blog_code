@@ -29,7 +29,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Spawn camera with OrbitCamera component
+    // camera with OrbitCamera component
         commands.spawn((
         Name::new("Camera"),
         Camera3d::default(),
@@ -66,7 +66,9 @@ fn setup(
 fn hover_cube(mut transform: Single<&mut Transform, With<Mesh3d>>, time: Res<Time>) {
     let hover_speed = 3.0;
     let hover_height = 0.3;
-    transform.translation.y = hover_height * (hover_speed * time.elapsed_secs()).sin();
+    let base_height = 1.0; // Offset to keep the cube above the grid
+
+    transform.translation.y = base_height + hover_height * (hover_speed * time.elapsed_secs()).sin();
 }
 
 
