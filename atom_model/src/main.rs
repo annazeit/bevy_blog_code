@@ -1,5 +1,9 @@
 use bevy::prelude::*;
 use bevy::color::palettes::css::*;
+use bevy::{
+    render::camera::Viewport, window::{PrimaryWindow, Window},
+};
+// theres no way to acc stop camera overlap in bevy but i can try to add a ui rectangle 
 
 #[derive(Component)]
 pub struct Grid {
@@ -10,8 +14,8 @@ pub struct Grid {
 
 #[derive(Component)]
 struct FlyCamera {
-    yaw: f32,
-    pitch: f32,
+    yaw: f32, // rotation around Y axis in radians
+    pitch: f32, // pitch is rotation around X axis in radians
 }
 
 #[derive(Resource)]
@@ -29,7 +33,6 @@ struct ElectronTrace {
     points: Vec<Vec3>,
     max_points: usize,
 }
-
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -39,30 +42,46 @@ fn main() {
         .add_systems(Update, orbit_electron_system)
         .add_systems(Update, orbit_tilt_control)
         .add_systems(Update, electron_trace_gizmo_system) 
+        .add_systems(Update, setup_viewports)
         .run();
 }
 
 fn setup( 
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    windows: Query<&Window, With<PrimaryWindow>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>
 ) {
-    // camera
+    // main camera
     commands.spawn((
-        Name::new("Camera"),
-        Camera3d::default(),
+        Name::new("MainCamera"),
+        Camera3dBundle {
+            ..default()
+        },
         Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         FlyCamera { yaw: 0.0, pitch: 0.0 },
+    ));
+
+    // game view camera
+    commands.spawn((
+        Name::new("GameViewCamera"),
+        Camera3dBundle {
+            ..default()
+        },
+        Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     // light
     commands.spawn((
         PointLight {
             shadows_enabled: true,
-            ..default() },
-        Transform::from_xyz(4.0, 8.0, 4.0) ));
+            ..default()
+        },
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
 
-    // grid 
+    // grid
     commands.spawn(Grid {
         enabled: false,
         size: 10,
@@ -72,7 +91,11 @@ fn setup(
     commands.spawn((
         Name::new("Core"),
         Mesh3d(meshes.add(Sphere::new(0.5))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb_u8(124, 144, 255),
+            emissive: Color::srgb(0.7, 0.8, 2.0).into(),            
+            ..default()
+        })),
         Transform::from_xyz(0.0, 0.0, 0.0),
         Core,
     ));
@@ -81,7 +104,11 @@ fn setup(
     commands.spawn((
         Name::new("Electron"),
         Mesh3d(meshes.add(Sphere::new(0.2))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(255, 0, 0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb_u8(255, 0, 0),
+            emissive: Color::srgb(0.4, 0.5, 1.0).into(),
+            ..default()
+        })),
         Transform::from_xyz(2.0, 0.0, 0.0),
         Electron,
     ));
@@ -90,7 +117,7 @@ fn setup(
     commands.insert_resource(OrbitTilt(0.0)); // start with no tilt
     commands.insert_resource(ElectronTrace {
         points: Vec::new(),
-        max_points: 1000, 
+        max_points: 5000, 
     });
 }
 
@@ -143,7 +170,7 @@ fn electron_trace_gizmo_system(
     for window in trace.points.windows(2) { // .windows returns an iterator over all contiguous windows of length size. The windows overlap.
         let a = window[0];
         let b = window[1];
-        gizmos.line(a, b, ORANGE_RED); // draw trace 
+        gizmos.line(a, b, WHITE); // draw trace 
     }
 }
 
@@ -166,8 +193,8 @@ fn grid(
                 gizmos.line(Vec3::new(-grid.size as f32, 0.0, pos),Vec3::new(grid.size as f32, 0.0, pos), GREY,);
             }
             // axes
-            gizmos.line(Vec3::new(0.0, -100.0, 0.0), Vec3::new(0.0, 100.0, 0.0), GREEN);
             gizmos.line(Vec3::new(-100.0, 0.0, 0.0), Vec3::new(100.0, 0.0, 0.0), RED);
+            gizmos.line(Vec3::new(0.0, -100.0, 0.0), Vec3::new(0.0, 100.0, 0.0), GREEN);
             gizmos.line(Vec3::new(0.0, 0.0, -100.0), Vec3::new(0.0, 0.0, 100.0), BLUE);
         }
     }
@@ -225,6 +252,39 @@ fn fly_camera_controller(
         }
         if direction.length_squared() > 0.0 {
             transform.translation += direction.normalize() * speed * time.delta_secs();
+        }
+        println!("Camera Position: {:?}", transform.translation);
+        println!("Camera Rotation: {:?}", transform.rotation);
+    }
+}
+
+fn setup_viewports(
+    mut cameras: Query<(&Name, &mut Camera)>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = windows.single();
+    let width = window.resolution.physical_width();
+    let height = window.resolution.physical_height();
+
+    // Size of the small camera (e.g., 1/3 of window width and height)
+    let small_width = width / 3;
+    let small_height = height / 3;
+
+    for (name, mut camera) in &mut cameras {
+        if name.as_str() == "MainCamera" {
+            // Main camera covers the whole window
+            camera.viewport = Some(Viewport {
+                physical_position: UVec2::new(0, 0),
+                physical_size: UVec2::new(width, height),
+                ..default()
+            });
+        } else if name.as_str() == "GameViewCamera" {
+            // GameViewCamera is a small rectangle in the bottom-right corner
+            camera.viewport = Some(Viewport {
+                physical_position: UVec2::new(width - small_width, 0), // bottom-right
+                physical_size: UVec2::new(small_width, small_height),
+                ..default()
+            });
         }
     }
 }
