@@ -1,9 +1,10 @@
-use bevy::prelude::*;
-use bevy::color::palettes::css::*;
 use bevy::{
-    render::camera::Viewport, window::{PrimaryWindow, Window},
+    prelude::*,
+    color::palettes::css::*,
+    math::UVec2,
+    render::camera::Viewport,
+    window::{PrimaryWindow, Window},
 };
-// theres no way to acc stop camera overlap in bevy but i can try to add a ui rectangle 
 
 #[derive(Component)]
 pub struct Grid {
@@ -13,8 +14,13 @@ pub struct Grid {
 }
 
 #[derive(Component)]
+struct FullScreen {
+    enabled: bool,
+}
+
+#[derive(Component)]
 struct FlyCamera {
-    yaw: f32, // rotation around Y axis in radians
+    yaw: f32,   // rotation around Y axis in radians
     pitch: f32, // pitch is rotation around X axis in radians
 }
 
@@ -33,6 +39,7 @@ struct ElectronTrace {
     points: Vec<Vec3>,
     max_points: usize,
 }
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -41,38 +48,46 @@ fn main() {
         .add_systems(Update, fly_camera_controller)
         .add_systems(Update, orbit_electron_system)
         .add_systems(Update, orbit_tilt_control)
-        .add_systems(Update, electron_trace_gizmo_system) 
+        .add_systems(Update, electron_trace_gizmo_system)
+        .add_systems(Update, full_screen_toggle)
         .add_systems(Update, setup_viewports)
         .run();
 }
 
-fn setup( 
+fn setup(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    windows: Query<&Window, With<PrimaryWindow>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>
 ) {
+    // game view camera
+    commands.spawn((
+        Name::new("GameViewCamera"),
+        Camera3d::default(),
+        Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        FullScreen { enabled: false },
+    ));
+
+    // UI node for camera background
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(0.0),
+            top: Val::Px(0.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .insert(BackgroundColor(BLACK.into()));
+
     // main camera
     commands.spawn((
         Name::new("MainCamera"),
-        Camera3dBundle {
-            ..default()
-        },
+        Camera3d::default(),
         Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         FlyCamera { yaw: 0.0, pitch: 0.0 },
     ));
 
-    // game view camera
-    commands.spawn((
-        Name::new("GameViewCamera"),
-        Camera3dBundle {
-            ..default()
-        },
-        Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    // light
+    // light source
     commands.spawn((
         PointLight {
             shadows_enabled: true,
@@ -81,19 +96,20 @@ fn setup(
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
 
-    // grid
+    // grid entity
     commands.spawn(Grid {
         enabled: false,
         size: 10,
-        cell_size:1.0 });
+        cell_size: 1.0
+    });
 
-    // core 
+    // core (nucleus)
     commands.spawn((
         Name::new("Core"),
         Mesh3d(meshes.add(Sphere::new(0.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb_u8(124, 144, 255),
-            emissive: Color::srgb(0.7, 0.8, 2.0).into(),            
+            emissive: Color::srgb(0.7, 0.8, 2.0).into(),
             ..default()
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
@@ -113,11 +129,12 @@ fn setup(
         Electron,
     ));
 
+    // Insert orbit/trace resources
     commands.insert_resource(OrbitAngle(0.0));
     commands.insert_resource(OrbitTilt(0.0)); // start with no tilt
     commands.insert_resource(ElectronTrace {
         points: Vec::new(),
-        max_points: 5000, 
+        max_points: 3770, // enough for a full "flower" at 60 FPS
     });
 }
 
@@ -153,6 +170,7 @@ fn orbit_electron_system(
     transform.translation = pos;
 }
 
+// Oscillate the tilt of the electron's orbit
 fn orbit_tilt_control(
     time: Res<Time>,
     mut tilt: ResMut<OrbitTilt>,
@@ -163,17 +181,23 @@ fn orbit_tilt_control(
     tilt.0 = tilt_amplitude * (time.elapsed_secs() * tilt_speed).sin();
 }
 
+// Draw the electron's trace as a colored line
 fn electron_trace_gizmo_system(
     mut gizmos: Gizmos,
     trace: Res<ElectronTrace>,
 ) {
-    for window in trace.points.windows(2) { // .windows returns an iterator over all contiguous windows of length size. The windows overlap.
+    let len = trace.points.len().saturating_sub(1);
+    for (i, window) in trace.points.windows(2).enumerate() {
         let a = window[0];
         let b = window[1];
-        gizmos.line(a, b, WHITE); // draw trace 
+        // Calculate a hue between 0.0 and 1.0 based on the segment's position
+        let hue = i as f32 / len.max(1) as f32;
+        let color = Color::hsl(hue * 360.0, 1.0, 0.5);
+        gizmos.line(a, b, color);
     }
 }
 
+// Draw grid and axes, toggle with Space
 fn grid(
     mut gizmos: Gizmos,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -182,24 +206,33 @@ fn grid(
     for mut grid in &mut grid_query {
         // toggle grid visibility
         if keyboard_input.just_pressed(KeyCode::Space) {
-            grid.enabled = !grid.enabled; 
+            grid.enabled = !grid.enabled;
         }
 
         if grid.enabled {
             // grid lines
             for i in -grid.size..=grid.size {
-                let pos = i as f32  * grid.cell_size;
-                gizmos.line(Vec3::new(pos, 0.0, -grid.size as f32),Vec3::new(pos, 0.0, grid.size as f32), GREY,);
-                gizmos.line(Vec3::new(-grid.size as f32, 0.0, pos),Vec3::new(grid.size as f32, 0.0, pos), GREY,);
+                let pos = i as f32 * grid.cell_size;
+                gizmos.line(
+                    Vec3::new(pos, 0.0, -grid.size as f32),
+                    Vec3::new(pos, 0.0, grid.size as f32),
+                    GREY,
+                );
+                gizmos.line(
+                    Vec3::new(-grid.size as f32, 0.0, pos),
+                    Vec3::new(grid.size as f32, 0.0, pos),
+                    GREY,
+                );
             }
             // axes
-            gizmos.line(Vec3::new(-100.0, 0.0, 0.0), Vec3::new(100.0, 0.0, 0.0), RED);
+            gizmos.line(Vec3::new(-100.0, 0.01, 0.0), Vec3::new(100.0, 0.0, 0.0), RED);
             gizmos.line(Vec3::new(0.0, -100.0, 0.0), Vec3::new(0.0, 100.0, 0.0), GREEN);
-            gizmos.line(Vec3::new(0.0, 0.0, -100.0), Vec3::new(0.0, 0.0, 100.0), BLUE);
+            gizmos.line(Vec3::new(0.0, 0.01, -100.0), Vec3::new(0.0, 0.0, 100.0), BLUE);
         }
     }
 }
 
+// WASD + QE movement and arrow keys for camera rotation
 fn fly_camera_controller(
     mut query: Query<(&mut Transform, &mut FlyCamera)>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -258,9 +291,23 @@ fn fly_camera_controller(
     }
 }
 
+// Toggle full screen for the game view camera with F11
+fn full_screen_toggle(
+    mut full_screen: Single<&mut FullScreen>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::F11) {
+        full_screen.enabled = !full_screen.enabled;
+        println!("Full Screen Mode: {}", full_screen.enabled);
+    }
+}
+
+// Set up camera viewports and UI node size/position
 fn setup_viewports(
     mut cameras: Query<(&Name, &mut Camera)>,
+    mut ui_node: Single<&mut Node>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    full_screen: Single<&mut FullScreen>,
 ) {
     let window = windows.single();
     let width = window.resolution.physical_width();
@@ -271,20 +318,37 @@ fn setup_viewports(
     let small_height = height / 3;
 
     for (name, mut camera) in &mut cameras {
-        if name.as_str() == "MainCamera" {
-            // Main camera covers the whole window
-            camera.viewport = Some(Viewport {
-                physical_position: UVec2::new(0, 0),
-                physical_size: UVec2::new(width, height),
-                ..default()
-            });
-        } else if name.as_str() == "GameViewCamera" {
-            // GameViewCamera is a small rectangle in the bottom-right corner
-            camera.viewport = Some(Viewport {
-                physical_position: UVec2::new(width - small_width, 0), // bottom-right
-                physical_size: UVec2::new(small_width, small_height),
-                ..default()
-            });
+        match name.as_str() {
+            "MainCamera" => {
+                // Main camera covers the whole window
+                camera.viewport = Some(Viewport {
+                    physical_position: UVec2::new(0, 0),
+                    physical_size: UVec2::new(width, height),
+                    ..default()
+                });
+            }
+            "GameViewCamera" => {
+                match full_screen.enabled {
+                    true => {
+                        camera.viewport = Some(Viewport {
+                            physical_size: UVec2::new(width, height),
+                            ..default()
+                        });
+                        ui_node.width = Val::Px(width as f32) / 2.0;
+                        ui_node.height = Val::Px(height as f32) / 2.0;
+                    }
+                    false => {
+                        camera.viewport = Some(Viewport {
+                            physical_position: UVec2::new(width - small_width, 0),
+                            physical_size: UVec2::new(small_width, small_height),
+                            ..default()
+                        });
+                        ui_node.width = Val::Px(small_width as f32) / 2.0;
+                        ui_node.height = Val::Px(small_height as f32) / 2.0;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
