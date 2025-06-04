@@ -1,9 +1,9 @@
 use bevy::{
     prelude::*,
-    color::palettes::css::*,
+    color::palettes::css::*, 
     math::UVec2,
-    render::camera::Viewport,
-    window::{PrimaryWindow, Window},
+    render::camera::Viewport, 
+    window::{PrimaryWindow, Window}
 };
 
 #[derive(Component)]
@@ -45,11 +45,8 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Update, grid)
-        .add_systems(Update, fly_camera_controller)
+        .add_systems(Update, fly_camera)
         .add_systems(Update, orbit_electron_system)
-        .add_systems(Update, orbit_tilt_control)
-        .add_systems(Update, electron_trace_gizmo_system)
-        .add_systems(Update, full_screen_toggle)
         .add_systems(Update, setup_viewports)
         .run();
 }
@@ -66,7 +63,7 @@ fn setup(
         Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         FullScreen { enabled: false },
     ));
-
+    
     // UI node for camera background
     commands
         .spawn(Node {
@@ -103,7 +100,7 @@ fn setup(
         cell_size: 1.0
     });
 
-    // core (nucleus)
+    // core 
     commands.spawn((
         Name::new("Core"),
         Mesh3d(meshes.add(Sphere::new(0.5))),
@@ -136,15 +133,19 @@ fn setup(
         points: Vec::new(),
         max_points: 3770, // enough for a full "flower" at 60 FPS
     });
+
+
+
 }
 
 // update electron's position and store its trace
 fn orbit_electron_system(
     time: Res<Time>,
     mut angle: ResMut<OrbitAngle>,
-    tilt: Res<OrbitTilt>,
+    tilt: ResMut<OrbitTilt>,
     mut transform: Single<&mut Transform, With<Electron>>,
     mut trace: ResMut<ElectronTrace>,
+    gizmos: Gizmos,
 ) {
     let radius = 2.0;
     let speed = 1.0;
@@ -168,7 +169,10 @@ fn orbit_electron_system(
 
     // update electron's transform
     transform.translation = pos;
-}
+
+    orbit_tilt_control(time, tilt);
+    electron_trace_gizmo_system(gizmos, trace.into());
+} 
 
 // Oscillate the tilt of the electron's orbit
 fn orbit_tilt_control(
@@ -233,7 +237,7 @@ fn grid(
 }
 
 // WASD + QE movement and arrow keys for camera rotation
-fn fly_camera_controller(
+fn fly_camera(
     mut query: Query<(&mut Transform, &mut FlyCamera)>,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -308,6 +312,7 @@ fn setup_viewports(
     mut ui_node: Single<&mut Node>,
     windows: Query<&Window, With<PrimaryWindow>>,
     full_screen: Single<&mut FullScreen>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
 ) {
     let window = windows.single();
     let width = window.resolution.physical_width();
@@ -351,4 +356,5 @@ fn setup_viewports(
             _ => {}
         }
     }
+    full_screen_toggle(full_screen, keyboard_input);
 }
