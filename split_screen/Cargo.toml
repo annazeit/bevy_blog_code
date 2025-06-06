@@ -1,5 +1,5 @@
 [package]
-name = "atom_model"
+name = "split_screen"
 version = "0.1.0"
 edition = "2021"
 

@@ -138,6 +138,10 @@ fn setup(
 
 }
 
+// The electron moves in a tilted, oscillating circular path around the core.
+// Its positions are stored in a buffer (trace.points), which is visualized as a colored line (the trace).
+// The trace shows the recent history of the electron’s movement, creating a dynamic, flower-like pattern as the tilt oscillates.
+
 // update electron's position and store its trace
 fn orbit_electron_system(
     time: Res<Time>,
@@ -200,6 +204,7 @@ fn electron_trace_gizmo_system(
         gizmos.line(a, b, color);
     }
 }
+
 
 // Draw grid and axes, toggle with Space
 fn grid(
