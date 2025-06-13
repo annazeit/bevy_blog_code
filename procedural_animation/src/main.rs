@@ -21,23 +21,7 @@ struct FullScreen {
 #[derive(Component)]
 struct FlyCamera {
     yaw: f32,   // rotation around Y axis in radians
-    pitch: f32, // pitch is rotation around X axis in radians
-}
-
-#[derive(Resource)]
-struct OrbitAngle(f32);
-#[derive(Resource)]
-struct OrbitTilt(f32); // in radians
-
-#[derive(Component)]
-struct Core;
-#[derive(Component)]
-struct Electron;
-
-#[derive(Resource, Default)]
-struct ElectronTrace {
-    points: Vec<Vec3>,
-    max_points: usize,
+    pitch: f32, // rotation around X axis in radians
 }
 
 fn main() {
@@ -46,7 +30,6 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, grid)
         .add_systems(Update, fly_camera)
-        .add_systems(Update, orbit_electron_system)
         .add_systems(Update, setup_viewpoints)
         .run();
 }
@@ -99,112 +82,7 @@ fn setup(
         size: 10,
         cell_size: 1.0
     });
-
-    // core 
-    commands.spawn((
-        Name::new("Core"),
-        Mesh3d(meshes.add(Sphere::new(0.5))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb_u8(124, 144, 255),
-            emissive: Color::srgb(0.7, 0.8, 2.0).into(),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        Core,
-    ));
-
-    // electron
-    commands.spawn((
-        Name::new("Electron"),
-        Mesh3d(meshes.add(Sphere::new(0.2))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb_u8(255, 0, 0),
-            emissive: Color::srgb(0.4, 0.5, 1.0).into(),
-            ..default()
-        })),
-        Transform::from_xyz(2.0, 0.0, 0.0),
-        Electron,
-    ));
-
-    // Insert orbit/trace resources
-    commands.insert_resource(OrbitAngle(0.0));
-    commands.insert_resource(OrbitTilt(0.0)); // start with no tilt
-    commands.insert_resource(ElectronTrace {
-        points: Vec::new(),
-        max_points: 3770, // enough for a full "flower" at 60 FPS
-    });
-
-
-
 }
-
-// The electron moves in a tilted, oscillating circular path around the core.
-// Its positions are stored in a buffer (trace.points), which is visualized as a colored line (the trace).
-// The trace shows the recent history of the electron’s movement, creating a dynamic, flower-like pattern as the tilt oscillates.
-
-// update electron's position and store its trace
-fn orbit_electron_system(
-    time: Res<Time>,
-    mut angle: ResMut<OrbitAngle>,
-    tilt: ResMut<OrbitTilt>,
-    mut transform: Single<&mut Transform, With<Electron>>,
-    mut trace: ResMut<ElectronTrace>,
-    gizmos: Gizmos,
-) {
-    let radius = 2.0;
-    let speed = 1.0;
-
-    // advance orbit angle
-    angle.0 += speed * time.delta_secs();
-
-    let x = radius * angle.0.cos();
-    let z = radius * angle.0.sin();
-    let mut pos = Vec3::new(x, 0.0, z);
-
-    // rotate orbit plane around Z axis by tilt.0
-    let tilt_quat = Quat::from_axis_angle(Vec3::Z, tilt.0);
-    pos = tilt_quat * pos;
-
-    // store position in trace
-    trace.points.push(pos);
-    if trace.points.len() > trace.max_points {
-        trace.points.remove(0);
-    }
-
-    // update electron's transform
-    transform.translation = pos;
-
-    orbit_tilt_control(time, tilt);
-    electron_trace_gizmo_system(gizmos, trace.into());
-} 
-
-// Oscillate the tilt of the electron's orbit
-fn orbit_tilt_control(
-    time: Res<Time>,
-    mut tilt: ResMut<OrbitTilt>,
-) {
-    let tilt_amplitude = 1.0; // max tilt in radians (~57 degrees)
-    let tilt_speed = 0.1;     // how fast it oscillates
-
-    tilt.0 = tilt_amplitude * (time.elapsed_secs() * tilt_speed).sin();
-}
-
-// Draw the electron's trace as a colored line
-fn electron_trace_gizmo_system(
-    mut gizmos: Gizmos,
-    trace: Res<ElectronTrace>,
-) {
-    let len = trace.points.len().saturating_sub(1);
-    for (i, window) in trace.points.windows(2).enumerate() {
-        let a = window[0];
-        let b = window[1];
-        // Calculate a hue between 0.0 and 1.0 based on the segment's position
-        let hue = i as f32 / len.max(1) as f32;
-        let color = Color::hsl(hue * 360.0, 1.0, 0.5);
-        gizmos.line(a, b, color);
-    }
-}
-
 
 // Draw grid and axes, toggle with Space
 fn grid(
